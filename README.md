@@ -23,8 +23,10 @@ Org, so `--under` takes a heading's number, but it works on any Org file.
 
 | Command | What it does |
 | --- | --- |
-| `ot add TITLE... [--under ID] [--due WHEN] [--state STATE]` | add a task under a heading, or in the inbox |
+| `ot add TITLE... [--in WHERE \| --under ID] [--due WHEN] [--state STATE]` | add a task to an inbox, or file it under a heading |
 | `ot ls [--under ID] [--state STATE] [--all]` | list open tasks (or one state, or all) |
+| `ot inbox [WHERE]` | what's waiting in the inboxes, broadest first |
+| `ot move TASK --in WHERE \| --under ID` | move a task to an inbox, or file it |
 | `ot set TASK STATE` | change a task's state |
 | `ot done TASK` | mark it done |
 | `ot where TASK` | print `FILE:LINE` |
@@ -49,6 +51,48 @@ Org, so `--under` takes a heading's number, but it works on any Org file.
   #+TODO: TODO NEXT WAIT | DONE CANCELLED
   ```
 
+## Inboxes
+
+Every level of a Johnny.Decimal system has an inbox, and a task goes to
+the narrowest one that fits. The system, area and category ones are the
+standard zeros. IDs and work packages have no slot below them, so theirs
+use extend-the-end: a `+ Inbox` sibling, made on first use.
+
+| `--in` | Inbox | In the Org file |
+| --- | --- | --- |
+| `system` (or `00`) | `00.01` | the system's inbox |
+| `10-19` | `10.01` | the area's, in its management category |
+| `11` | `11.01` | the category's |
+| `11.11` | `11.11+ Inbox` | a heading right after `11.11 …` |
+| `W0011` | `W0011+ Inbox` | a heading right after the work package |
+
+```org
+*** 11.11 Passport
+*** 11.11+ Inbox
+:PROPERTIES:
+:CUSTOM_ID: 11.11+Inbox
+:END:
+**** TODO Ask about the photo size
+```
+
+Some rules:
+
+- A work package with a `+` sibling takes the space form. The first time
+  `W0011~11.11 Trip` gets an inbox, `ot` renames it to `W0011 11.11 Trip`.
+- With `OT_ROOT` set to the system's root folder, `ot` does the same on
+  disk: it makes `11.11+ Inbox/` next to `11.11 Passport/`, and renames the
+  work package's folder.
+- With no `--in` or `--under`, `ot add` uses the inbox for the folder
+  you're in. Inside `11 Me/11.11 Passport` that's 11.11's, and inside
+  `11 Me` it's 11.01. Otherwise it uses `$OT_INBOX`, else `00.01`, else a
+  plain `* Inbox` heading for files that aren't a JDex. `OT_CONTEXT=0`
+  turns the folder rule off.
+- `ot inbox 11` lists category 11's inboxes and everything below them,
+  including the work packages filed under 11's IDs. `ot inbox` with no
+  argument lists every inbox.
+- `ot move TASK --under 11.11` files a task out of its inbox (Org's
+  refile), and `--in` moves it to a narrower inbox. The task keeps its id.
+
 ## How it runs
 
 Each command runs a small Emacs started with `-Q`, which loads Org and
@@ -66,7 +110,9 @@ every change, so it's safe to edit the same file in your own Emacs.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `OT_FILE` | `~/org/tasks.org` | the Org file |
-| `OT_INBOX` | `Inbox` | where `ot add` puts a task without `--under`: a `CUSTOM_ID`, number or title. It's made at the end of the file if missing. For a JDex, `11.01` is a natural choice. |
+| `OT_INBOX` | | the default inbox when the folder gives none: a `--in` value, or a heading's title |
+| `OT_CONTEXT` | `1` | `0` to not pick the inbox from the current folder |
+| `OT_ROOT` | | the Johnny.Decimal root on disk, so `+ Inbox` folders are made and work packages renamed there too |
 | `OT_SOCKET` | `ot` | the daemon's socket: a name, or an absolute path |
 | `OT_DAEMON` | `auto` | `0` to always use `--batch` |
 | `OT_EDITOR` | `emacsclient -n` | what `ot open` runs, with `+LINE FILE` |

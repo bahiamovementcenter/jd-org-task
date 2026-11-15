@@ -11,7 +11,9 @@ set -euo pipefail
 : "${OT_EMACSCLIENT:=emacsclient}"
 : "${OT_LISP:=$(cd "$(dirname "${BASH_SOURCE[0]}")/../lisp" && pwd)}"
 : "${OT_FILE:=$HOME/org/tasks.org}"
-: "${OT_INBOX:=Inbox}"
+: "${OT_INBOX:=}"    # default inbox when the folder gives none
+: "${OT_ROOT:=}"     # Johnny.Decimal root on disk, for + Inbox folders
+: "${OT_CONTEXT:=1}" # 0: don't pick the inbox from the current folder
 : "${OT_SOCKET:=ot}"
 : "${OT_DAEMON:=auto}" # auto: use or start a daemon; 0: always --batch
 
@@ -19,10 +21,13 @@ usage() {
   cat <<'EOF'
 usage: ot [--file FILE] [--json] COMMAND ...
 
-  ot add TITLE... [--under ID] [--due WHEN] [--state STATE]
-                     add a task, under a heading or in the inbox
+  ot add TITLE... [--in WHERE | --under ID] [--due WHEN] [--state STATE]
+                     add a task to an inbox, or file it under a heading
   ot ls [--under ID] [--state STATE] [--all]
                      list tasks: open ones, or STATE, or all with --all
+  ot inbox [WHERE]   list what's waiting in the inboxes, broadest first
+  ot move TASK --in WHERE | --under ID
+                     move a task to an inbox, or file it under a heading
   ot set TASK STATE  change a task's state (NEXT, WAIT, DONE, ...)
   ot done TASK       mark a task done
   ot where TASK      print FILE:LINE of a task
@@ -30,19 +35,28 @@ usage: ot [--file FILE] [--json] COMMAND ...
   ot daemon          run ot's Emacs in the foreground (for a service)
   ot stop            stop ot's Emacs daemon
 
-ID is a heading's CUSTOM_ID or the number its title starts with, for
-example an ID:              ot add Renew it --under 11.11
-or a work package:          ot add Book flights --under W0011
+WHERE picks an inbox, narrowest wins:
+  ot add Renew it --in W0011    the work package's  W0011+ Inbox
+  ot add Renew it --in 11.11    the ID's            11.11+ Inbox
+  ot add Renew it --in 11       the category's      11.01
+  ot add Renew it --in 10-19    the area's          10.01
+  ot add Renew it --in system   the system's        00.01
+With no --in or --under, the inbox for the folder you're in (inside
+"11.11 Passport" it's 11.11's), else $OT_INBOX, else 00.01.
+ID is a heading's CUSTOM_ID or the number its title starts with:
+  ot add Renew it --under 11.11     ot add Book flights --under W0011
 TASK is the start of a task's id, as `ot ls` prints it.
 WHEN is anything Org's date prompt reads: fri, +2w, 2026-12-01.
 
   --file FILE   the Org file (default $OT_FILE, else ~/org/tasks.org)
   --json        print JSON
 
-Environment: OT_FILE, OT_INBOX (heading for tasks with no --under,
-default Inbox), OT_SOCKET (daemon socket name or absolute path, default
-ot), OT_DAEMON (0 to never use a daemon), OT_EDITOR (for `ot open`;
-default emacsclient -n).
+Environment: OT_FILE; OT_INBOX (the default inbox: a WHERE, or a
+heading's title); OT_CONTEXT (0: ignore the current folder); OT_ROOT
+(the Johnny.Decimal root, so + Inbox folders are made on disk too);
+OT_SOCKET (daemon socket name or absolute path, default ot); OT_DAEMON
+(0 to never use a daemon); OT_EDITOR (for `ot open`; default
+emacsclient -n).
 EOF
 }
 
@@ -120,7 +134,12 @@ trap 'rm -f "$out"' EXIT
 
 args=
 for a in "$@"; do args+=" $(q "$a")"; done
-form="(ot-cli $(q "$file") $(q "$out") $(q "$cmd") (list$args) $(q "$OT_INBOX") $json)"
+cwd=nil
+[ "$OT_CONTEXT" = 0 ] || cwd=$(q "$PWD")
+root=nil
+[ -z "$OT_ROOT" ] || root=$(q "$(realpath -m -- "$OT_ROOT")")
+form="(let ((ot-cwd $cwd) (ot-root $root))
+  (ot-cli $(q "$file") $(q "$out") $(q "$cmd") (list$args) $(q "$OT_INBOX") $json))"
 
 status=
 if [ "$OT_DAEMON" != 0 ]; then
