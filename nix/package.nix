@@ -51,7 +51,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
   meta = {
     description = "Org tasks from the shell, through a small Emacs";
     mainProgram = "ot";
-    license = lib.licenses.mit;
+    license = lib.licenses.agpl3Only;
     platforms = lib.platforms.unix;
   };
 })

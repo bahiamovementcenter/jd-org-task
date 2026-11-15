@@ -111,3 +111,8 @@ nix fmt
 
 `lisp/ot.el` holds the logic. `bin/ot` only chooses daemon or batch, and
 passes the arguments along.
+
+## Licence
+
+Copyright © 2026 Ash. Licensed under the
+[GNU Affero General Public License v3.0 only](LICENSE) (`AGPL-3.0-only`).
